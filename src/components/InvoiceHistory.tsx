@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Trash2, ChevronDown, Receipt, Hash, TrendingUp, ArrowUpRight, ArrowDownRight, Sparkles, Pencil } from 'lucide-react';
 import { Invoice } from '@/hooks/useInvoices';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
-import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -28,15 +28,26 @@ interface InvoiceHistoryProps {
   ) => Promise<any>;
 }
 
-// ESTA ES LA FUNCIÓN MÁGICA QUE ARREGLA LA FECHA
-const parseInvoiceDate = (dateString: string): Date => {
-  // Si viene como YYYY-MM-DD, lo dividimos manualmente para crear la fecha local
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
+// FUNCIÓN DE FECHAS SEGURA (A prueba de errores)
+const parseInvoiceDate = (dateString: string | null | undefined): Date => {
+  if (!dateString) return new Date(); // Si no hay fecha, devuelve hoy para no romper
+
+  try {
+    // Si viene como YYYY-MM-DD, lo dividimos manualmente
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    
+    // Intento normal
+    const date = new Date(dateString);
+    // Si es inválida, devolvemos hoy
+    if (!isValid(date)) return new Date();
+    
+    return date;
+  } catch (error) {
+    return new Date();
   }
-  // Si no, dejamos que JS intente interpretarla
-  return new Date(dateString);
 };
 
 export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: InvoiceHistoryProps) => {
@@ -46,9 +57,10 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
   const months = useMemo(() => {
     const uniqueMonths = new Set<string>();
     invoices.forEach(inv => {
-      // USAMOS LA FUNCIÓN AQUÍ TAMBIÉN
       const date = parseInvoiceDate(inv.invoice_date || inv.created_at);
-      uniqueMonths.add(format(date, 'yyyy-MM'));
+      if (isValid(date)) {
+        uniqueMonths.add(format(date, 'yyyy-MM'));
+      }
     });
     return Array.from(uniqueMonths).sort().reverse();
   }, [invoices]);
@@ -60,10 +72,10 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
     const start = startOfMonth(new Date(year, month - 1));
     const end = endOfMonth(new Date(year, month - 1));
     
-    return invoices.filter(inv => 
-      // Y AQUÍ
-      isWithinInterval(parseInvoiceDate(inv.invoice_date || inv.created_at), { start, end })
-    );
+    return invoices.filter(inv => {
+      const date = parseInvoiceDate(inv.invoice_date || inv.created_at);
+      return isValid(date) && isWithinInterval(date, { start, end });
+    });
   }, [invoices, selectedMonth]);
 
   const totalStats = useMemo(() => {
@@ -82,10 +94,10 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
     const start = startOfMonth(prevDate);
     const end = endOfMonth(prevDate);
     
-    const prevInvoices = invoices.filter(inv => 
-      // Y AQUÍ
-      isWithinInterval(parseInvoiceDate(inv.invoice_date || inv.created_at), { start, end })
-    );
+    const prevInvoices = invoices.filter(inv => {
+      const date = parseInvoiceDate(inv.invoice_date || inv.created_at);
+      return isValid(date) && isWithinInterval(date, { start, end });
+    });
     
     return {
       totalAmount: prevInvoices.reduce((sum, inv) => sum + Number(inv.total_amount), 0),
@@ -206,13 +218,16 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
             <div className="flex items-center gap-3">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="w-52 bg-background border-border">
-                  <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
                   <SelectValue placeholder="Filtrar por mes" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas las facturas</SelectItem>
                   {months.map(month => {
-                    const label = format(new Date(month + '-01'), 'MMMM yyyy', { locale: es });
+                    const date = new Date(month + '-01');
+                    // Verificación extra antes de formatear
+                    if (!isValid(date)) return null;
+                    
+                    const label = format(date, 'MMMM yyyy', { locale: es });
                     return (
                       <SelectItem key={month} value={month}>
                         {label.charAt(0).toUpperCase() + label.slice(1)}
@@ -240,128 +255,133 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
           </Card>
         ) : (
           <div className="space-y-2">
-            {filteredInvoices.map((invoice, index) => (
-              <Card 
-                key={invoice.id} 
-                className={`overflow-hidden transition-all duration-300 bg-card border-border hover-lift ${
-                  expandedInvoice === invoice.id ? 'ring-2 ring-primary/30 shadow-md' : 'hover:shadow-sm'
-                }`}
-                style={{ 
-                  animationDelay: `${index * 30}ms`,
-                  animation: 'slideUp 0.3s ease-out forwards'
-                }}
-              >
-                <div 
-                  className="p-4 cursor-pointer hover:bg-muted/20 transition-colors"
-                  onClick={() => setExpandedInvoice(expandedInvoice === invoice.id ? null : invoice.id)}
+            {filteredInvoices.map((invoice, index) => {
+              const date = parseInvoiceDate(invoice.invoice_date || invoice.created_at);
+              
+              return (
+                <Card 
+                  key={invoice.id} 
+                  className={`overflow-hidden transition-all duration-300 bg-card border-border hover-lift ${
+                    expandedInvoice === invoice.id ? 'ring-2 ring-primary/30 shadow-md' : 'hover:shadow-sm'
+                  }`}
+                  style={{ 
+                    animationDelay: `${index * 30}ms`,
+                    animation: 'slideUp 0.3s ease-out forwards'
+                  }}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="hidden sm:flex h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 items-center justify-center">
-                        <span className="text-xs font-bold text-primary">#{filteredInvoices.length - index}</span>
+                  <div 
+                    className="p-4 cursor-pointer hover:bg-muted/20 transition-colors"
+                    onClick={() => setExpandedInvoice(expandedInvoice === invoice.id ? null : invoice.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="hidden sm:flex h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 items-center justify-center">
+                          <span className="text-xs font-bold text-primary">#{filteredInvoices.length - index}</span>
+                        </div>
+                        <div>
+                          <span className="font-mono text-sm font-bold text-foreground">{invoice.ncf}</span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {isValid(date) 
+                              ? format(date, "d MMM yyyy", { locale: es }) 
+                              : 'Fecha inválida'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-mono text-sm font-bold text-foreground">{invoice.ncf}</span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {/* CORREGIDO AQUÍ: Usamos parseInvoiceDate */}
-                          {format(parseInvoiceDate(invoice.invoice_date || invoice.created_at), "d MMM yyyy", { locale: es })}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 sm:gap-6">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-xs text-muted-foreground">Factura</p>
-                        <p className="font-semibold text-foreground">${formatNumber(invoice.total_amount)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Comisión</p>
-                        <p className="font-bold text-success">${formatCurrency(invoice.total_commission)}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {onUpdate && (
-                          <EditInvoiceDialog
-                            invoice={invoice}
-                            onUpdate={onUpdate}
-                            onDelete={onDelete}
-                            trigger={
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                        )}
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(invoice.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        <div className={`h-8 w-8 flex items-center justify-center transition-transform duration-200 ${
-                          expandedInvoice === invoice.id ? 'rotate-180' : ''
-                        }`}>
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      
+                      <div className="flex items-center gap-3 sm:gap-6">
+                        <div className="text-right hidden sm:block">
+                          <p className="text-xs text-muted-foreground">Factura</p>
+                          <p className="font-semibold text-foreground">${formatNumber(invoice.total_amount)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Comisión</p>
+                          <p className="font-bold text-success">${formatCurrency(invoice.total_commission)}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {onUpdate && (
+                            <EditInvoiceDialog
+                              invoice={invoice}
+                              onUpdate={onUpdate}
+                              onDelete={onDelete}
+                              trigger={
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              }
+                            />
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(invoice.id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <div className={`h-8 w-8 flex items-center justify-center transition-transform duration-200 ${
+                            expandedInvoice === invoice.id ? 'rotate-180' : ''
+                          }`}>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className={`overflow-hidden transition-all duration-300 ease-out ${
-                  expandedInvoice === invoice.id ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
-                }`}>
-                  <div className="px-4 pb-4 pt-2 border-t border-border">
-                    <div className="space-y-2 mb-4">
-                      {invoice.products?.map((p, pIndex) => (
-                        <div 
-                          key={p.id} 
-                          className="flex justify-between items-center text-sm p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                          style={{ animationDelay: `${pIndex * 50}ms` }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-bold">{p.percentage}%</span>
-                            <span className="text-foreground">{p.product_name}</span>
+                  <div className={`overflow-hidden transition-all duration-300 ease-out ${
+                    expandedInvoice === invoice.id ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+                  }`}>
+                    <div className="px-4 pb-4 pt-2 border-t border-border">
+                      <div className="space-y-2 mb-4">
+                        {invoice.products?.map((p, pIndex) => (
+                          <div 
+                            key={p.id} 
+                            className="flex justify-between items-center text-sm p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                            style={{ animationDelay: `${pIndex * 50}ms` }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-bold">{p.percentage}%</span>
+                              <span className="text-foreground">{p.product_name}</span>
+                            </div>
+                            <div className="text-right flex items-center gap-2">
+                              <span className="text-muted-foreground">${formatNumber(p.amount)}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-success font-semibold">${formatCurrency(p.commission)}</span>
+                            </div>
                           </div>
-                          <div className="text-right flex items-center gap-2">
-                            <span className="text-muted-foreground">${formatNumber(p.amount)}</span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="text-success font-semibold">${formatCurrency(p.commission)}</span>
+                        ))}
+                        {invoice.rest_amount > 0 && (
+                          <div className="flex justify-between items-center text-sm p-3 rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-3">
+                              <span className="px-2 py-1 rounded bg-muted text-muted-foreground text-xs font-bold">{invoice.rest_percentage}%</span>
+                              <span className="text-foreground">Resto de productos</span>
+                            </div>
+                            <div className="text-right flex items-center gap-2">
+                              <span className="text-muted-foreground">${formatNumber(invoice.rest_amount)}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-success font-semibold">${formatCurrency(invoice.rest_commission)}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                      {invoice.rest_amount > 0 && (
-                        <div className="flex justify-between items-center text-sm p-3 rounded-lg bg-muted/30">
-                          <div className="flex items-center gap-3">
-                            <span className="px-2 py-1 rounded bg-muted text-muted-foreground text-xs font-bold">{invoice.rest_percentage}%</span>
-                            <span className="text-foreground">Resto de productos</span>
-                          </div>
-                          <div className="text-right flex items-center gap-2">
-                            <span className="text-muted-foreground">${formatNumber(invoice.rest_amount)}</span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="text-success font-semibold">${formatCurrency(invoice.rest_commission)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex justify-between items-center pt-3 border-t border-border">
-                      <span className="font-medium text-foreground">Total Comisión</span>
-                      <span className="text-xl font-bold text-success">${formatCurrency(invoice.total_commission)}</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex justify-between items-center pt-3 border-t border-border">
+                        <span className="font-medium text-foreground">Total Comisión</span>
+                        <span className="text-xl font-bold text-success">${formatCurrency(invoice.total_commission)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
