@@ -84,7 +84,6 @@ export const CalculatorView = ({
   const [ncfSuffix, setNcfSuffix] = useState('');
   const [invoiceDate, setInvoiceDate] = useState<Date>(new Date());
   const [step1Complete, setStep1Complete] = useState(false);
-  const [step1Collapsed, setStep1Collapsed] = useState(false);
 
   const ncfPrefix = 'B01000';
 
@@ -140,7 +139,6 @@ export const CalculatorView = ({
   const handleContinue = () => {
     if (ncfSuffix.length === 4) {
       setStep1Complete(true);
-      setStep1Collapsed(true);
     }
   };
 
@@ -177,47 +175,22 @@ export const CalculatorView = ({
             </div>
           </div>
 
-          {/* Step 1: NCF and Date - Collapsible when complete */}
-          <div className={`border-b border-border transition-all duration-300 ${step1Collapsed ? 'bg-muted/20' : ''}`}>
-            {/* Collapsed Header (clickable to expand) */}
-            {step1Collapsed ? (
-              <button 
-                onClick={() => setStep1Collapsed(false)}
-                className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-7 w-7 rounded-full bg-success text-success-foreground flex items-center justify-center">
-                    <Check className="h-4 w-4" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-foreground">
-                      {format(invoiceDate, "d MMM yyyy", { locale: es })} · <span className="font-mono">{fullNcf}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">Clic para editar</p>
-                  </div>
+          {/* Step 1: NCF and Date - Always visible */}
+          <div className="border-b border-border">
+            <div className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                  step1Complete ? 'bg-success text-success-foreground' : 'bg-primary text-primary-foreground'
+                }`}>
+                  {step1Complete ? <Check className="h-4 w-4" /> : '1'}
                 </div>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ) : (
-              <div className="p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                    step1Complete ? 'bg-success text-success-foreground' : 'bg-primary text-primary-foreground'
-                  }`}>
-                    {step1Complete ? <Check className="h-4 w-4" /> : '1'}
-                  </div>
-                  <h3 className="font-semibold text-foreground">Datos de la Factura</h3>
-                  {step1Complete && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="ml-auto text-xs"
-                      onClick={() => setStep1Collapsed(true)}
-                    >
-                      Colapsar
-                    </Button>
-                  )}
-                </div>
+                <h3 className="font-semibold text-foreground">Datos de la Factura</h3>
+                {step1Complete && (
+                  <span className="ml-auto text-xs text-success flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Completado
+                  </span>
+                )}
+              </div>
 
                 <div className="space-y-4">
                   {/* Date Picker */}
@@ -282,7 +255,6 @@ export const CalculatorView = ({
                   )}
                 </div>
               </div>
-            )}
           </div>
 
           {/* Step 2: Invoice Total - only show after step 1 */}
@@ -342,6 +314,11 @@ export const CalculatorView = ({
                         productAmounts={productAmounts}
                         productDisplayValues={productDisplayValues}
                         onProductChange={handleProductAmountChange}
+                        onRemoveFromInvoice={(id) => {
+                          // Just clear the amount for this invoice, don't delete from DB
+                          onProductChange(id, 0);
+                          setProductDisplayValues(prev => ({ ...prev, [id]: '' }));
+                        }}
                         onDeleteProduct={onDeleteProduct}
                         onUpdateProduct={onUpdateProduct}
                         onAddProduct={onAddProduct}
