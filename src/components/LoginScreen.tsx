@@ -23,7 +23,7 @@ export const LoginScreen = ({ onLoginSuccess }: LoginScreenProps) => {
     setTimeout(() => {
       // DATOS DE ACCESO (Puedes cambiarlos en tu .env o dejarlos aquí por ahora)
       const correctPassword = import.meta.env.VITE_APP_PASSWORD || "Gabriel17";
-      const correctUsername = "admin"; // Usuario fijo por ahora
+      const correctUsername = "DLS"; // Usuario fijo por ahora
 
       if (password === correctPassword && username.toLowerCase().trim() === correctUsername) {
         toast.success("¡Acceso Concedido!");
@@ -53,7 +53,7 @@ export const LoginScreen = ({ onLoginSuccess }: LoginScreenProps) => {
                 <User className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input
                   id="username"
-                  placeholder="admin"
+                  placeholder="Tu Usuario"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="pl-10"
