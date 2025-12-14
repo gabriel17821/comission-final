@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Upload, Database, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Download, Upload, Database, Loader2, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
@@ -62,12 +62,14 @@ export const BackupSystem = () => {
         const json = JSON.parse(ev.target?.result as string);
         const { data } = json;
 
+        // Función auxiliar para importar verificando errores
         const importTable = async (table: string, rows: any[]) => {
           if (!rows || rows.length === 0) return;
           const { error } = await supabase.from(table).upsert(rows);
           if (error) throw new Error(`Error en ${table}: ${error.message}`);
         };
 
+        // El orden importa para las relaciones
         await importTable('sellers', data.sellers);
         await importTable('clients', data.clients);
         await importTable('products', data.products);
@@ -95,28 +97,30 @@ export const BackupSystem = () => {
       
       setIsLoading(true);
       try {
+          // FIX: Usamos el UUID nulo válido en lugar de '0'
+          const VALID_UUID = '00000000-0000-0000-0000-000000000000';
+
           // 1. Borrar detalles de facturas
-          const { error: err1 } = await supabase.from('invoice_products').delete().neq('id', '0');
+          const { error: err1 } = await supabase.from('invoice_products').delete().neq('id', VALID_UUID);
           if (err1) throw new Error(`Error borrando productos de facturas: ${err1.message}`);
 
           // 2. Borrar facturas
-          const { error: err2 } = await supabase.from('invoices').delete().neq('id', '0');
+          const { error: err2 } = await supabase.from('invoices').delete().neq('id', VALID_UUID);
           if (err2) throw new Error(`Error borrando facturas: ${err2.message}`);
 
           // 3. Borrar productos
-          const { error: err3 } = await supabase.from('products').delete().neq('id', '0');
+          const { error: err3 } = await supabase.from('products').delete().neq('id', VALID_UUID);
           if (err3) throw new Error(`Error borrando productos: ${err3.message}`);
 
           // 4. Borrar clientes
-          const { error: err4 } = await supabase.from('clients').delete().neq('id', '0');
+          const { error: err4 } = await supabase.from('clients').delete().neq('id', VALID_UUID);
           if (err4) throw new Error(`Error borrando clientes: ${err4.message}`);
 
-          // 5. Borrar vendedores (Opcional, si quieres borrar vendedores también)
-           const { error: err5 } = await supabase.from('sellers').delete().neq('name', 'Sistema'); 
-           // Dejamos un filtro tonto 'neq name Sistema' para borrar todo, o usa neq id 0
+          // 5. Borrar vendedores
+           const { error: err5 } = await supabase.from('sellers').delete().neq('id', VALID_UUID); 
            if (err5) throw new Error(`Error borrando vendedores: ${err5.message}`);
 
-          try { await supabase.from('expenses').delete().neq('id', '0'); } catch {}
+          try { await supabase.from('expenses').delete().neq('id', VALID_UUID); } catch {}
           
           toast.success('Sistema formateado correctamente');
           setTimeout(() => window.location.reload(), 1500);
@@ -139,7 +143,7 @@ export const BackupSystem = () => {
         <DialogHeader>
           <DialogTitle>Gestión de Base de Datos</DialogTitle>
           <DialogDescription>
-            Exporta tu información o restaura una copia.
+            Exporta tu información para guardarla o restaura una copia anterior.
           </DialogDescription>
         </DialogHeader>
         
