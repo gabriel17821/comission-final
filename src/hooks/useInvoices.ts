@@ -21,6 +21,9 @@ export interface Invoice {
   created_at: string;
   invoice_date: string;
   seller_id?: string | null;
+  client_id?: string | null;
+  // Relaciones (Joins)
+  clients?: { name: string } | null;
   products?: InvoiceProduct[];
 }
 
@@ -29,29 +32,19 @@ export const useInvoices = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchInvoices = async () => {
-    const { data: invoicesData, error: invoicesError } = await supabase
+    // AQUÍ ESTÁ LA MAGIA: Traemos invoice_products Y el nombre del cliente (clients(name))
+    const { data, error } = await supabase
       .from('invoices')
-      .select('*')
+      .select('*, invoice_products(*), clients(name)') 
       .order('created_at', { ascending: false });
     
-    if (invoicesError) {
+    if (error) {
       toast.error('Error al cargar facturas');
-      console.error(invoicesError);
+      console.error(error);
       setLoading(false);
       return;
     }
-
-    const invoicesWithProducts = await Promise.all(
-      (invoicesData || []).map(async (invoice) => {
-        const { data: products } = await supabase
-          .from('invoice_products')
-          .select('*')
-          .eq('invoice_id', invoice.id);
-        return { ...invoice, products: products || [] };
-      })
-    );
-
-    setInvoices(invoicesWithProducts);
+    setInvoices(data as unknown as Invoice[]);
     setLoading(false);
   };
 
@@ -68,8 +61,10 @@ export const useInvoices = () => {
     restCommission: number,
     totalCommission: number,
     products: { name: string; amount: number; percentage: number; commission: number }[],
-    sellerId?: string | null
+    sellerId?: string | null,
+    clientId?: string | null // <--- NUEVO PARÁMETRO
   ) => {
+    // 1. Verificar NCF
     const { data: existing } = await supabase
       .from('invoices')
       .select('id')
@@ -81,7 +76,7 @@ export const useInvoices = () => {
       return null;
     }
 
-    // 1. Guardar Factura
+    // 2. Guardar Factura (Incluyendo client_id)
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .insert({
@@ -93,8 +88,9 @@ export const useInvoices = () => {
         rest_commission: restCommission,
         total_commission: totalCommission,
         seller_id: sellerId || null,
+        client_id: clientId || null, // <--- GUARDAMOS EL CLIENTE
       })
-      .select()
+      .select('*, clients(name)') // Intentamos traer el nombre de una vez
       .single();
     
     if (invoiceError) {
@@ -103,7 +99,7 @@ export const useInvoices = () => {
       return null;
     }
 
-    // 2. Guardar Productos
+    // 3. Guardar Productos
     const productInserts = products
       .filter(p => p.amount > 0)
       .map(p => ({
@@ -118,10 +114,19 @@ export const useInvoices = () => {
       await supabase.from('invoice_products').insert(productInserts);
     }
 
-    // 3. (CRÍTICO) CREAR EL OBJETO COMPLETO PARA LA NOTIFICACIÓN
-    // Esto es lo que faltaba en tu código anterior
+    // 4. CONSTRUIR OBJETO PARA NOTIFICACIÓN (ARREGLO DEFINITIVO)
+    // Si la DB no devolvió el cliente (a veces pasa en insert), lo buscamos o ponemos placeholder
+    let clientName = "Cliente General";
+    if (clientId) {
+       // Opcional: Podríamos buscar el nombre en la lista de clientes local, 
+       // pero por ahora dejaremos que el fetch global lo actualice luego.
+       // Si el insert devolvió 'clients', usamos ese.
+       if (invoice.clients) clientName = invoice.clients.name;
+    }
+
     const fullInvoice: Invoice = {
       ...invoice,
+      clients: invoice.clients || { name: clientName }, // Aseguramos que tenga nombre
       products: products.map((p, index) => ({
         id: `temp-${index}`, 
         product_name: p.name,
@@ -132,10 +137,9 @@ export const useInvoices = () => {
     };
 
     toast.success('Factura guardada correctamente');
-    fetchInvoices();
+    fetchInvoices(); // Refrescar lista
     
-    // Devolvemos la factura COMPLETA (con productos) para que la notificación la vea
-    return fullInvoice; 
+    return fullInvoice; // <--- ESTO ARREGLA LA NOTIFICACIÓN
   };
 
   const deleteInvoice = async (id: string) => {
@@ -155,7 +159,6 @@ export const useInvoices = () => {
     totalCommission: number,
     products: { name: string; amount: number; percentage: number; commission: number }[]
   ) => {
-    // ... (Lógica de update simplificada para ahorrar espacio, mantén la que tienes si funciona o usa la del paso anterior)
     const { data: invoice, error } = await supabase.from('invoices').update({
         ncf, invoice_date: invoiceDate, total_amount: totalAmount,
         rest_amount: restAmount, rest_percentage: restPercentage,
