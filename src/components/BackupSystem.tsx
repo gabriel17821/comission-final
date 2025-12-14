@@ -10,17 +10,16 @@ export const BackupSystem = () => {
   const handleExport = async () => {
     setIsLoading(true);
     try {
-      // 1. Descargamos TODAS las tablas, incluyendo sellers (vendedores)
       const { data: inv } = await supabase.from('invoices').select('*');
       const { data: pro } = await supabase.from('products').select('*');
       const { data: det } = await supabase.from('invoice_products').select('*');
       const { data: cli } = await supabase.from('clients').select('*');
       const { data: exp } = await supabase.from('expenses').select('*');
-      const { data: sel } = await supabase.from('sellers').select('*'); // <--- Nuevo
+      const { data: sel } = await supabase.from('sellers').select('*');
 
       const fullData = { 
         data: { 
-          sellers: sel, // Importante: Vendedores primero
+          sellers: sel, 
           clients: cli, 
           products: pro, 
           invoices: inv, 
@@ -51,7 +50,7 @@ export const BackupSystem = () => {
     if (!file) return;
 
     if (!window.confirm("⚠️ ¿Estás seguro? Se fusionarán los datos con los actuales.")) {
-      e.target.value = ''; // Limpiar input
+      e.target.value = '';
       return;
     }
 
@@ -63,34 +62,29 @@ export const BackupSystem = () => {
         const json = JSON.parse(ev.target?.result as string);
         const { data } = json;
 
-        // Función auxiliar para importar verificando errores
         const importTable = async (table: string, rows: any[]) => {
           if (!rows || rows.length === 0) return;
-          // Usamos upsert y VERIFICAMOS si hubo error
           const { error } = await supabase.from(table).upsert(rows);
-          if (error) {
-            console.error(`Error importando ${table}:`, error);
-            throw new Error(`Error en tabla ${table}: ${error.message}`);
-          }
+          if (error) throw new Error(`Error en ${table}: ${error.message}`);
         };
 
-        // El ORDEN es vital para evitar errores de llaves foráneas
-        await importTable('sellers', data.sellers); // 1. Vendedores
-        await importTable('clients', data.clients); // 2. Clientes
-        await importTable('products', data.products); // 3. Productos
-        await importTable('invoices', data.invoices); // 4. Facturas (necesitan sellers y clients)
-        await importTable('invoice_products', data.invoice_products); // 5. Detalles (necesitan invoices y products)
-        await importTable('expenses', data.expenses); // 6. Gastos
+        await importTable('sellers', data.sellers);
+        await importTable('clients', data.clients);
+        await importTable('products', data.products);
+        await importTable('invoices', data.invoices);
+        await importTable('invoice_products', data.invoice_products);
+        
+        if (data.expenses) await importTable('expenses', data.expenses);
 
         toast.success('¡Datos restaurados con éxito!');
         setTimeout(() => window.location.reload(), 1500);
 
       } catch (error: any) {
         console.error(error);
-        toast.error(`Falló la restauración: ${error.message || 'Error desconocido'}`);
+        toast.error(`Falló la restauración: ${error.message}`);
       } finally {
         setIsLoading(false);
-        e.target.value = ''; // Limpiar input para permitir subir el mismo archivo de nuevo
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
@@ -101,19 +95,34 @@ export const BackupSystem = () => {
       
       setIsLoading(true);
       try {
-          // Borrar en orden inverso para respetar restricciones
-          await supabase.from('invoice_products').delete().neq('id', '0');
-          await supabase.from('invoices').delete().neq('id', '0');
-          await supabase.from('products').delete().neq('id', '0');
-          await supabase.from('clients').delete().neq('id', '0');
-          await supabase.from('expenses').delete().neq('id', '0');
-          // No borramos sellers por seguridad, o puedes agregarlo si quieres
+          // 1. Borrar detalles de facturas
+          const { error: err1 } = await supabase.from('invoice_products').delete().neq('id', '0');
+          if (err1) throw new Error(`Error borrando productos de facturas: ${err1.message}`);
+
+          // 2. Borrar facturas
+          const { error: err2 } = await supabase.from('invoices').delete().neq('id', '0');
+          if (err2) throw new Error(`Error borrando facturas: ${err2.message}`);
+
+          // 3. Borrar productos
+          const { error: err3 } = await supabase.from('products').delete().neq('id', '0');
+          if (err3) throw new Error(`Error borrando productos: ${err3.message}`);
+
+          // 4. Borrar clientes
+          const { error: err4 } = await supabase.from('clients').delete().neq('id', '0');
+          if (err4) throw new Error(`Error borrando clientes: ${err4.message}`);
+
+          // 5. Borrar vendedores (Opcional, si quieres borrar vendedores también)
+           const { error: err5 } = await supabase.from('sellers').delete().neq('name', 'Sistema'); 
+           // Dejamos un filtro tonto 'neq name Sistema' para borrar todo, o usa neq id 0
+           if (err5) throw new Error(`Error borrando vendedores: ${err5.message}`);
+
+          try { await supabase.from('expenses').delete().neq('id', '0'); } catch {}
           
           toast.success('Sistema formateado correctamente');
           setTimeout(() => window.location.reload(), 1500);
-      } catch (e) {
+      } catch (e: any) {
         console.error(e);
-        toast.error('Error al formatear');
+        toast.error(e.message || 'Error al formatear');
       } finally { 
         setIsLoading(false); 
       }
@@ -130,49 +139,26 @@ export const BackupSystem = () => {
         <DialogHeader>
           <DialogTitle>Gestión de Base de Datos</DialogTitle>
           <DialogDescription>
-            Exporta tu información para guardarla o restaura una copia anterior.
+            Exporta tu información o restaura una copia.
           </DialogDescription>
         </DialogHeader>
         
         <div className="grid grid-cols-2 gap-4 py-4">
-            <button 
-                onClick={handleExport} 
-                disabled={isLoading} 
-                className="flex flex-col items-center justify-center p-4 border-2 border-slate-100 rounded-xl hover:bg-emerald-50 hover:border-emerald-200 transition-all gap-2 group disabled:opacity-50"
-            >
+            <button onClick={handleExport} disabled={isLoading} className="flex flex-col items-center justify-center p-4 border-2 border-slate-100 rounded-xl hover:bg-emerald-50 hover:border-emerald-200 transition-all gap-2 group disabled:opacity-50">
                 {isLoading ? <Loader2 className="animate-spin text-emerald-600"/> : <Download className="w-6 h-6 text-emerald-600 group-hover:scale-110 transition-transform"/>}
-                <div className="text-center">
-                    <span className="block text-sm font-bold text-slate-700">Descargar Copia</span>
-                    <span className="text-[10px] text-slate-500">Guardar JSON</span>
-                </div>
+                <div className="text-center"><span className="block text-sm font-bold text-slate-700">Descargar Copia</span></div>
             </button>
-            
             <div className="relative group">
-                <input 
-                    type="file" 
-                    accept=".json" 
-                    onChange={handleImport} 
-                    className="absolute inset-0 opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed" 
-                    disabled={isLoading}
-                />
-                <button 
-                    disabled={isLoading} 
-                    className="w-full h-full flex flex-col items-center justify-center p-4 border-2 border-slate-100 rounded-xl group-hover:bg-blue-50 group-hover:border-blue-200 transition-all gap-2 disabled:opacity-50"
-                >
+                <input type="file" accept=".json" onChange={handleImport} className="absolute inset-0 opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed" disabled={isLoading}/>
+                <button disabled={isLoading} className="w-full h-full flex flex-col items-center justify-center p-4 border-2 border-slate-100 rounded-xl group-hover:bg-blue-50 group-hover:border-blue-200 transition-all gap-2 disabled:opacity-50">
                     {isLoading ? <Loader2 className="animate-spin text-blue-600"/> : <Upload className="w-6 h-6 text-blue-600 group-hover:scale-110 transition-transform"/>}
-                    <div className="text-center">
-                        <span className="block text-sm font-bold text-slate-700">Restaurar Copia</span>
-                        <span className="text-[10px] text-slate-500">Subir JSON</span>
-                    </div>
+                    <div className="text-center"><span className="block text-sm font-bold text-slate-700">Restaurar Copia</span></div>
                 </button>
             </div>
         </div>
 
         <div className="pt-2 border-t mt-2">
-            <button 
-                onClick={handleDelete} 
-                className="w-full py-2 px-4 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 flex items-center justify-center gap-2 transition-colors"
-            >
+            <button onClick={handleDelete} className="w-full py-2 px-4 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 flex items-center justify-center gap-2 transition-colors">
                 <Trash2 className="w-3.5 h-3.5"/> Formatear Base de Datos
             </button>
         </div>
