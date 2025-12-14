@@ -1,15 +1,21 @@
 import { useState, useMemo, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, History, BarChart3, Layers } from "lucide-react";
+import { Calculator, History, BarChart3, Layers, Calendar, User } from "lucide-react";
 import { useProducts } from "@/hooks/useProducts";
 import { useSettings } from "@/hooks/useSettings";
-import { useInvoices } from "@/hooks/useInvoices";
+import { useInvoices, Invoice } from "@/hooks/useInvoices";
 import { useSellers } from "@/hooks/useSellers";
 import { CalculatorView } from "@/components/CalculatorView";
 import { InvoiceHistory } from "@/components/InvoiceHistory";
 import { Statistics } from "@/components/Statistics";
 import { MonthlyBreakdown } from "@/components/MonthlyBreakdown";
 import { SellerManager } from "@/components/SellerManager";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { formatCurrency, formatNumber } from "@/lib/formatters";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { Separator } from "@/components/ui/separator";
+import { LastInvoiceNotification } from "@/components/LastInvoiceNotification"; // <--- IMPORTANTE
 
 const Index = () => {
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts();
@@ -19,6 +25,10 @@ const Index = () => {
 
   const [totalInvoice, setTotalInvoice] = useState(0);
   const [productAmounts, setProductAmounts] = useState<Record<string, number>>({});
+  
+  // --- Estados de Notificación / Preview ---
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [lastInvoiceNotification, setLastInvoiceNotification] = useState<Invoice | null>(null);
 
   useEffect(() => {
     if (products.length > 0) {
@@ -101,6 +111,10 @@ const Index = () => {
       if (!isNaN(ncfNumber)) {
         await updateLastNcfNumber(ncfNumber);
       }
+      
+      // Guardamos la factura en el estado para mostrar la notificación
+      setLastInvoiceNotification(result);
+      
       handleReset();
     }
 
@@ -110,11 +124,49 @@ const Index = () => {
   const suggestedNcf = getNextNcfNumber();
   const isLoading = productsLoading || settingsLoading;
 
-  // Filtrar facturas
   const filteredInvoices = useMemo(() => {
     if (!activeSeller) return invoices;
     return invoices.filter(inv => inv.seller_id === activeSeller.id);
   }, [invoices, activeSeller]);
+
+  // Helper para renderizar el contenido del diálogo de factura (Preview manual)
+  const renderInvoiceDialogContent = (invoice: Invoice) => (
+    <div className="space-y-6 pt-2">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Calendar className="h-3 w-3" /> Fecha
+          </span>
+          <div className="font-medium">
+            {format(new Date(invoice.invoice_date || invoice.created_at), "d MMMM yyyy", { locale: es })}
+          </div>
+        </div>
+        {sellers.find(s => s.id === invoice.seller_id) && (
+          <div className="space-y-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <User className="h-3 w-3" /> Vendedor
+            </span>
+            <div className="font-medium truncate">
+              {sellers.find(s => s.id === invoice.seller_id)?.name}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-muted/30 p-4 rounded-lg space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-muted-foreground">Monto Total</span>
+          <span className="text-lg font-bold">${formatNumber(invoice.total_amount)}</span>
+        </div>
+        <Separator />
+        <div className="flex justify-between items-center text-primary">
+          <span className="text-sm font-medium">Comisión Generada</span>
+          <span className="text-xl font-bold">${formatCurrency(invoice.total_commission)}</span>
+        </div>
+      </div>
+      {/* ... Detalle de productos omitido aquí por brevedad, se usa el componente ... */}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,10 +178,15 @@ const Index = () => {
                 <Calculator className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Calculadora</h1>
-                <p className="text-sm text-muted-foreground">Herramienta de comisiones</p>
+                <h1 className="text-xl font-bold text-foreground">
+                  Calculadora de Comisiones
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Tu herramienta para calcular ganancias
+                </p>
               </div>
             </div>
+            
             <SellerManager
               sellers={sellers}
               activeSeller={activeSeller}
@@ -145,22 +202,10 @@ const Index = () => {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <Tabs defaultValue="calculator" className="space-y-8">
           <TabsList className="grid w-full grid-cols-4 h-14 p-1.5 bg-muted rounded-xl">
-            <TabsTrigger value="calculator" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Calculator className="h-5 w-5" />
-              <span className="hidden sm:inline">Calculadora</span>
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <History className="h-5 w-5" />
-              <span className="hidden sm:inline">Historial</span>
-            </TabsTrigger>
-            <TabsTrigger value="breakdown" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Layers className="h-5 w-5" />
-              <span className="hidden sm:inline">Desglose</span>
-            </TabsTrigger>
-            <TabsTrigger value="statistics" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <BarChart3 className="h-5 w-5" />
-              <span className="hidden sm:inline">Estadísticas</span>
-            </TabsTrigger>
+            <TabsTrigger value="calculator" className="gap-2 text-base rounded-lg"><Calculator className="h-5 w-5"/><span className="hidden sm:inline">Calculadora</span></TabsTrigger>
+            <TabsTrigger value="history" className="gap-2 text-base rounded-lg"><History className="h-5 w-5"/><span className="hidden sm:inline">Historial</span></TabsTrigger>
+            <TabsTrigger value="breakdown" className="gap-2 text-base rounded-lg"><Layers className="h-5 w-5"/><span className="hidden sm:inline">Desglose</span></TabsTrigger>
+            <TabsTrigger value="statistics" className="gap-2 text-base rounded-lg"><BarChart3 className="h-5 w-5"/><span className="hidden sm:inline">Estadísticas</span></TabsTrigger>
           </TabsList>
 
           <TabsContent value="calculator" className="mt-8">
@@ -181,7 +226,6 @@ const Index = () => {
               onSaveInvoice={handleSaveInvoice}
               suggestedNcf={suggestedNcf}
               activeSeller={activeSeller}
-              lastInvoice={invoices[0]} // FIX: Pasamos la última factura real
             />
           </TabsContent>
 
@@ -194,10 +238,34 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="statistics">
-            <Statistics invoices={filteredInvoices} sellerName={activeSeller?.name} />
+            <Statistics invoices={filteredInvoices} sellerName={activeSeller?.name} onPreviewInvoice={setPreviewInvoice} />
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* --- ESTO ES LO QUE TE FALTABA AL FINAL --- */}
+      
+      {/* 1. Diálogo para previsualizar facturas desde estadísticas */}
+      <Dialog open={!!previewInvoice} onOpenChange={(open) => !open && setPreviewInvoice(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="border-b pb-4">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <span className="font-mono bg-muted px-2 py-0.5 rounded text-primary">
+                {previewInvoice?.ncf}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          {previewInvoice && renderInvoiceDialogContent(previewInvoice)}
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. Componente de notificación al guardar */}
+      <LastInvoiceNotification 
+        invoice={lastInvoiceNotification} 
+        onClose={() => setLastInvoiceNotification(null)}
+        sellers={sellers}
+      />
+      
     </div>
   );
 };
