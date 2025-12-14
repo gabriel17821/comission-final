@@ -86,7 +86,9 @@ const Index = () => {
     setProductAmounts((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleSaveInvoice = async (ncf: string, invoiceDate: string) => {
+const handleSaveInvoice = async (ncf: string, invoiceDate: string, clientId?: string) => {
+    
+    // ... (el código de calculations sigue igual) ...
     const productBreakdown = calculations.breakdown.map(b => ({
       name: b.name,
       amount: b.amount,
@@ -103,7 +105,8 @@ const Index = () => {
       calculations.restCommission,
       calculations.totalCommission,
       productBreakdown,
-      activeSeller?.id
+      activeSeller?.id,
+      clientId // <--- AQUÍ PASAMOS EL CLIENTE QUE VIENE DE LA VISTA
     );
 
     if (result) {
@@ -112,9 +115,7 @@ const Index = () => {
         await updateLastNcfNumber(ncfNumber);
       }
       
-      // Guardamos la factura en el estado para mostrar la notificación
-      setLastInvoiceNotification(result);
-      
+      setLastInvoiceNotification(result); // La notificación ahora recibirá el objeto completo :)
       handleReset();
     }
 
