@@ -3,14 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp, Save, RotateCcw, User, Plus } from "lucide-react";
-import { formatCurrency } from "@/lib/formatters";
+import { Save, RotateCcw, User, Plus, Calendar as CalendarIcon, FileText } from "lucide-react";
 import { CalculationBreakdown } from "./CalculationBreakdown";
 import { ProductInput } from "./ProductInput";
 import { Product } from "@/hooks/useProducts";
 import { Seller } from "@/hooks/useSellers";
-import { useClients, Client } from "@/hooks/useClients"; // Importamos Clientes
+import { useClients } from "@/hooks/useClients";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -28,7 +26,7 @@ interface CalculatorViewProps {
   onUpdateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
   onUpdateRestPercentage: (val: number) => Promise<void>;
-  onSaveInvoice: (ncf: string, date: string, clientId?: string) => Promise<any>; // Update firma
+  onSaveInvoice: (ncf: string, date: string, clientId?: string) => Promise<any>;
   suggestedNcf: string;
   activeSeller: Seller | null;
 }
@@ -53,7 +51,6 @@ export const CalculatorView = ({
 }: CalculatorViewProps) => {
   const [ncf, setNcf] = useState(suggestedNcf);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
-  const [isDataOpen, setIsDataOpen] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
   // --- CLIENTES ---
@@ -62,15 +59,11 @@ export const CalculatorView = ({
   const [newClientName, setNewClientName] = useState("");
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false);
 
-  const selectedClient = clients.find(c => c.id === selectedClientId);
-
   const handleSave = async () => {
     if (!ncf) return;
     setIsSaving(true);
-    // Pasamos el ID del cliente al guardar
     await onSaveInvoice(ncf, invoiceDate, selectedClientId || undefined);
     setIsSaving(false);
-    // Resetear local
     setNcf(suggestedNcf); 
     setSelectedClientId("");
   };
@@ -87,108 +80,100 @@ export const CalculatorView = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* SECCIÓN 1: DATOS DE LA FACTURA */}
-      <Card className="border-l-4 border-l-blue-500 shadow-md">
-        <Collapsible open={isDataOpen} onOpenChange={setIsDataOpen}>
-          <CardHeader className="py-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2 text-blue-700">
-                <User className="h-5 w-5" />
-                Datos de la Factura
-              </CardTitle>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  {isDataOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-            {/* Vista Colapsada: Muestra NCF y CLIENTE */}
-            {!isDataOpen && (
-              <div className="flex flex-col text-sm mt-1 text-slate-600 font-medium">
-                 {selectedClient && <span className="text-blue-600">{selectedClient.name}</span>}
-                 <span>NCF: {ncf}</span>
-              </div>
-            )}
-          </CardHeader>
-          <CollapsibleContent>
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Selector de Cliente */}
-                <div className="space-y-2">
-                   <Label>Cliente</Label>
-                   <div className="flex gap-2">
-                     <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                       <SelectTrigger className="flex-1">
-                         <SelectValue placeholder="Seleccionar Cliente..." />
-                       </SelectTrigger>
-                       <SelectContent>
-                         {clients.map(c => (
-                           <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                     
-                     {/* Botón rápido para agregar cliente */}
-                     <Dialog open={isClientDialogOpen} onOpenChange={setIsClientDialogOpen}>
+      {/* SECCIÓN 1: CABECERA DE DATOS (DISEÑO CLÁSICO ABIERTO) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Tarjeta de Cliente */}
+        <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <User className="h-4 w-4" /> Cliente
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="flex gap-2">
+                    <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                        <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Seleccionar..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {clients.map(c => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Dialog open={isClientDialogOpen} onOpenChange={setIsClientDialogOpen}>
                         <DialogTrigger asChild>
-                           <Button variant="outline" size="icon"><Plus className="w-4 h-4"/></Button>
+                            <Button variant="outline" size="icon"><Plus className="w-4 h-4"/></Button>
                         </DialogTrigger>
                         <DialogContent>
-                          <DialogHeader><DialogTitle>Nuevo Cliente</DialogTitle></DialogHeader>
-                          <div className="space-y-4 py-4">
-                             <div className="space-y-2">
-                               <Label>Nombre</Label>
-                               <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Ej: Farmacia Central"/>
-                             </div>
-                             <Button onClick={handleQuickAddClient} className="w-full">Crear</Button>
-                          </div>
+                            <DialogHeader><DialogTitle>Nuevo Cliente</DialogTitle></DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Nombre</Label>
+                                    <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Ej: Farmacia Central"/>
+                                </div>
+                                <Button onClick={handleQuickAddClient} className="w-full">Crear</Button>
+                            </div>
                         </DialogContent>
-                     </Dialog>
-                   </div>
+                    </Dialog>
                 </div>
+            </CardContent>
+        </Card>
 
-                <div className="space-y-2">
-                  <Label htmlFor="ncf">Número de Comprobante (NCF)</Label>
-                  <Input
+        {/* Tarjeta de NCF */}
+        <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4" /> NCF
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <Input
                     id="ncf"
                     value={ncf}
                     onChange={(e) => setNcf(e.target.value)}
                     placeholder="B01..."
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date">Fecha</Label>
-                  <Input
+                    className="font-mono font-bold"
+                />
+            </CardContent>
+        </Card>
+
+        {/* Tarjeta de Fecha */}
+        <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4" /> Fecha
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <Input
                     id="date"
                     type="date"
                     value={invoiceDate}
                     onChange={(e) => setInvoiceDate(e.target.value)}
-                  />
-                </div>
-              </div>
+                />
             </CardContent>
-          </CollapsibleContent>
-        </Collapsible>
-      </Card>
+        </Card>
+      </div>
 
-      {/* SECCIÓN 2: CALCULADORA (Productos) */}
-      <Card className="border-l-4 border-l-emerald-500 shadow-md">
+      {/* SECCIÓN 2: PRODUCTOS Y MONTOS (DISEÑO ORIGINAL) */}
+      <Card className="shadow-md border-t-4 border-t-primary">
         <CardHeader>
           <div className="flex justify-between items-center">
-             <CardTitle className="text-lg text-emerald-700">Detalle de Productos</CardTitle>
-             <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-               {activeSeller ? `Vendedor: ${activeSeller.name}` : "Sin Vendedor Asignado"}
+             <CardTitle className="text-xl">Calculadora de Comisiones</CardTitle>
+             <div className="bg-muted px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-muted-foreground">
+               {activeSeller ? `Vendedor: ${activeSeller.name}` : "Sin Vendedor"}
              </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-8">
+          {/* Input Gigante de Monto Total */}
           <div className="space-y-2">
-            <Label htmlFor="total" className="text-base font-semibold">
-              Monto Total de la Factura
+            <Label htmlFor="total" className="text-lg font-semibold">
+              Monto Total Factura
             </Label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xl">
                 $
               </span>
               <Input
@@ -196,14 +181,14 @@ export const CalculatorView = ({
                 type="number"
                 value={totalInvoice || ""}
                 onChange={(e) => setTotalInvoice(parseFloat(e.target.value) || 0)}
-                className="pl-7 text-lg font-bold"
+                className="pl-10 h-14 text-2xl font-bold bg-slate-50 border-slate-200"
                 placeholder="0.00"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <Label className="text-base font-semibold">Productos Especiales</Label>
+            <Label className="text-base font-medium text-muted-foreground">Productos Especiales</Label>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {products.map((product) => (
                 <ProductInput
@@ -217,7 +202,7 @@ export const CalculatorView = ({
               ))}
               <Button
                 variant="outline"
-                className="h-[100px] border-dashed flex flex-col gap-2 hover:border-primary hover:text-primary transition-colors"
+                className="h-[100px] border-dashed border-2 flex flex-col gap-2 hover:border-primary hover:text-primary transition-colors opacity-70 hover:opacity-100"
                 onClick={() => onAddProduct("Nuevo Producto", 15, "#000000")}
               >
                 <Plus className="h-6 w-6" />
@@ -234,8 +219,8 @@ export const CalculatorView = ({
         </CardContent>
       </Card>
 
-      {/* BOTONES DE ACCIÓN */}
-      <div className="sticky bottom-4 flex gap-4 bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-border shadow-lg">
+      {/* BOTONES DE ACCIÓN FLOTANTES */}
+      <div className="sticky bottom-4 flex gap-4 bg-background/80 backdrop-blur-md p-4 rounded-xl border border-border shadow-lg z-10">
         <Button
           variant="outline"
           size="lg"
@@ -244,15 +229,15 @@ export const CalculatorView = ({
           disabled={isLoading || isSaving}
         >
           <RotateCcw className="mr-2 h-4 w-4" />
-          Reiniciar
+          Limpiar
         </Button>
         <Button
           size="lg"
           onClick={handleSave}
-          className="flex-[2] gradient-primary shadow-lg hover:shadow-xl transition-all"
+          className="flex-[2] text-lg font-bold shadow-md hover:shadow-xl transition-all"
           disabled={isLoading || isSaving || totalInvoice <= 0}
         >
-          <Save className="mr-2 h-4 w-4" />
+          <Save className="mr-2 h-5 w-5" />
           {isSaving ? "Guardando..." : "Guardar Factura"}
         </Button>
       </div>
