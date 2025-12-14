@@ -41,7 +41,7 @@ export const useInvoices = () => {
       return;
     }
 
-    // Fetch products for each invoice
+    // Cargar productos para cada factura
     const invoicesWithProducts = await Promise.all(
       (invoicesData || []).map(async (invoice) => {
         const { data: products } = await supabase
@@ -71,7 +71,7 @@ export const useInvoices = () => {
     products: { name: string; amount: number; percentage: number; commission: number }[],
     sellerId?: string | null
   ) => {
-    // Check if NCF already exists
+    // 1. Verificar si el NCF ya existe
     const { data: existing } = await supabase
       .from('invoices')
       .select('id')
@@ -83,6 +83,7 @@ export const useInvoices = () => {
       return null;
     }
 
+    // 2. Insertar la factura (Cabecera)
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .insert({
@@ -104,7 +105,7 @@ export const useInvoices = () => {
       return null;
     }
 
-    // Save product breakdown
+    // 3. Insertar los productos (Detalle)
     const productInserts = products
       .filter(p => p.amount > 0)
       .map(p => ({
@@ -121,27 +122,35 @@ export const useInvoices = () => {
         .insert(productInserts);
       
       if (productsError) {
-        console.error(productsError);
+        console.error('Error al guardar productos:', productsError);
       }
     }
 
+    // 4. Construir el objeto completo para la notificación (CRÍTICO PARA QUE FUNCIONE)
+    // Usamos IDs temporales para visualización inmediata sin tener que volver a consultar la BD
+    const fullInvoice: Invoice = {
+      ...invoice,
+      products: products.map((p, index) => ({
+        id: `temp-${index}`, 
+        product_name: p.name,
+        amount: p.amount,
+        percentage: p.percentage,
+        commission: p.commission
+      }))
+    };
+
     toast.success('Factura guardada correctamente');
-    fetchInvoices();
-    return invoice;
+    fetchInvoices(); // Refrescar la lista en segundo plano
+    
+    return fullInvoice; // <--- Retornamos la factura CON productos
   };
 
-const deleteInvoice = async (id: string) => {
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('id', id);
-    
+  const deleteInvoice = async (id: string) => {
+    const { error } = await supabase.from('invoices').delete().eq('id', id);
     if (error) {
       toast.error('Error al eliminar factura');
-      console.error(error);
       return false;
     }
-    
     setInvoices(invoices.filter(i => i.id !== id));
     toast.success('Factura eliminada');
     return true;
@@ -158,7 +167,7 @@ const deleteInvoice = async (id: string) => {
     totalCommission: number,
     products: { name: string; amount: number; percentage: number; commission: number }[]
   ) => {
-    // Check if NCF already exists (excluding current invoice)
+    // Verificar NCF duplicado en update
     const { data: existing } = await supabase
       .from('invoices')
       .select('id')
@@ -187,16 +196,12 @@ const deleteInvoice = async (id: string) => {
       .single();
     
     if (invoiceError) {
-      toast.error('Error al actualizar factura');
-      console.error(invoiceError);
+      toast.error('Error al actualizar');
       return null;
     }
 
-    // Delete existing products and re-insert
-    await supabase
-      .from('invoice_products')
-      .delete()
-      .eq('invoice_id', id);
+    // Reemplazar productos
+    await supabase.from('invoice_products').delete().eq('invoice_id', id);
 
     const productInserts = products
       .filter(p => p.amount > 0)
@@ -209,16 +214,10 @@ const deleteInvoice = async (id: string) => {
       }));
 
     if (productInserts.length > 0) {
-      const { error: productsError } = await supabase
-        .from('invoice_products')
-        .insert(productInserts);
-      
-      if (productsError) {
-        console.error(productsError);
-      }
+      await supabase.from('invoice_products').insert(productInserts);
     }
 
-    toast.success('Factura actualizada correctamente');
+    toast.success('Factura actualizada');
     fetchInvoices();
     return invoice;
   };
