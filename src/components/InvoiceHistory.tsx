@@ -28,20 +28,26 @@ interface InvoiceHistoryProps {
   ) => Promise<any>;
 }
 
-// FUNCIÓN DE FECHAS SEGURA (A prueba de errores)
+// FUNCIÓN DE FECHAS SEGURA Y CORREGIDA
+// Establece la hora a mediodía (12:00) para evitar problemas de zona horaria
 const parseInvoiceDate = (dateString: string | null | undefined): Date => {
-  if (!dateString) return new Date(); // Si no hay fecha, devuelve hoy para no romper
+  if (!dateString) return new Date(); // Fallback por seguridad
 
   try {
-    // Si viene como YYYY-MM-DD, lo dividimos manualmente
+    let date: Date;
+    
+    // Caso 1: String fecha simple YYYY-MM-DD
     if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [year, month, day] = dateString.split('-').map(Number);
-      return new Date(year, month - 1, day);
+      date = new Date(year, month - 1, day, 12, 0, 0); // Mediodía local
+    } 
+    // Caso 2: String ISO o fecha completa
+    else {
+      date = new Date(dateString);
+      // Forzamos a mediodía para estabilizar el filtrado
+      date.setHours(12, 0, 0, 0);
     }
-    
-    // Intento normal
-    const date = new Date(dateString);
-    // Si es inválida, devolvemos hoy
+
     if (!isValid(date)) return new Date();
     
     return date;
@@ -69,6 +75,7 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
     if (selectedMonth === 'all') return invoices;
     
     const [year, month] = selectedMonth.split('-').map(Number);
+    // Crear rango del mes (Inicio y Fin)
     const start = startOfMonth(new Date(year, month - 1));
     const end = endOfMonth(new Date(year, month - 1));
     
@@ -223,8 +230,9 @@ export const InvoiceHistory = ({ invoices, loading, onDelete, onUpdate }: Invoic
                 <SelectContent>
                   <SelectItem value="all">Todas las facturas</SelectItem>
                   {months.map(month => {
-                    const date = new Date(month + '-01');
-                    // Verificación extra antes de formatear
+                    // Usamos mediodía para evitar saltos de fecha al formatear el label
+                    const [y, m] = month.split('-').map(Number);
+                    const date = new Date(y, m - 1, 15);
                     if (!isValid(date)) return null;
                     
                     const label = format(date, 'MMMM yyyy', { locale: es });

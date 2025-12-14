@@ -97,7 +97,6 @@ const Index = () => {
     );
 
     if (result) {
-      // Extract NCF number and save it for next time
       const ncfNumber = parseInt(ncf.slice(-4), 10);
       if (!isNaN(ncfNumber)) {
         await updateLastNcfNumber(ncfNumber);
@@ -109,10 +108,9 @@ const Index = () => {
   };
 
   const suggestedNcf = getNextNcfNumber();
-
   const isLoading = productsLoading || settingsLoading;
 
-  // Filter invoices by active seller
+  // Filtrar facturas
   const filteredInvoices = useMemo(() => {
     if (!activeSeller) return invoices;
     return invoices.filter(inv => inv.seller_id === activeSeller.id);
@@ -120,7 +118,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="mx-auto max-w-5xl px-4 py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -129,16 +126,10 @@ const Index = () => {
                 <Calculator className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">
-                  Calculadora de Comisiones
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Tu herramienta para calcular ganancias
-                </p>
+                <h1 className="text-xl font-bold text-foreground">Calculadora</h1>
+                <p className="text-sm text-muted-foreground">Herramienta de comisiones</p>
               </div>
             </div>
-            
-            {/* Seller Manager */}
             <SellerManager
               sellers={sellers}
               activeSeller={activeSeller}
@@ -154,31 +145,19 @@ const Index = () => {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <Tabs defaultValue="calculator" className="space-y-8">
           <TabsList className="grid w-full grid-cols-4 h-14 p-1.5 bg-muted rounded-xl">
-            <TabsTrigger 
-              value="calculator" 
-              className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md text-muted-foreground"
-            >
+            <TabsTrigger value="calculator" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Calculator className="h-5 w-5" />
               <span className="hidden sm:inline">Calculadora</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="history" 
-              className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md text-muted-foreground"
-            >
+            <TabsTrigger value="history" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <History className="h-5 w-5" />
               <span className="hidden sm:inline">Historial</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="breakdown" 
-              className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md text-muted-foreground"
-            >
+            <TabsTrigger value="breakdown" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Layers className="h-5 w-5" />
               <span className="hidden sm:inline">Desglose</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="statistics" 
-              className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md text-muted-foreground"
-            >
+            <TabsTrigger value="statistics" className="gap-2 text-base rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <BarChart3 className="h-5 w-5" />
               <span className="hidden sm:inline">Estadísticas</span>
             </TabsTrigger>
@@ -202,25 +181,16 @@ const Index = () => {
               onSaveInvoice={handleSaveInvoice}
               suggestedNcf={suggestedNcf}
               activeSeller={activeSeller}
+              lastInvoice={invoices[0]} // FIX: Pasamos la última factura real
             />
           </TabsContent>
 
           <TabsContent value="history">
-            <InvoiceHistory
-              invoices={filteredInvoices}
-              loading={invoicesLoading}
-              onDelete={deleteInvoice}
-              onUpdate={updateInvoice}
-            />
+            <InvoiceHistory invoices={filteredInvoices} loading={invoicesLoading} onDelete={deleteInvoice} onUpdate={updateInvoice} />
           </TabsContent>
 
           <TabsContent value="breakdown">
-            <MonthlyBreakdown 
-              invoices={filteredInvoices} 
-              onUpdateInvoice={updateInvoice}
-              onDeleteInvoice={deleteInvoice}
-              sellerName={activeSeller?.name}
-            />
+            <MonthlyBreakdown invoices={filteredInvoices} onUpdateInvoice={updateInvoice} onDeleteInvoice={deleteInvoice} sellerName={activeSeller?.name} />
           </TabsContent>
 
           <TabsContent value="statistics">
